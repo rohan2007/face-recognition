@@ -2,6 +2,7 @@ import os
 import shutil
 import face_recognition
 import numpy as np
+import cv2
 
 # Define input and output folder paths
 input_folder = "input"
@@ -11,9 +12,8 @@ output_folder = "output"
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
-# Initialize a dictionary to keep track of detected faces
-face_dict = {}
-counter = 1  # Initialize a counter for naming
+# Initialize a list to keep track of detected face encodings
+face_encodings_list = []
 
 # Loop through all files in the input folder
 for filename in os.listdir(input_folder):
@@ -22,38 +22,40 @@ for filename in os.listdir(input_folder):
         image_path = os.path.join(input_folder, filename)
         image = face_recognition.load_image_file(image_path)
 
-        # Find face encodings in the current image
+        # Find face encodings and face locations in the current image
         face_encodings = face_recognition.face_encodings(image)
+        face_locations = face_recognition.face_locations(image)
 
         # Skip images with no or multiple faces
-        if len(face_encodings) != 1:
+        if len(face_encodings) != 1 or len(face_locations) != 1:
             print(f"Skipping {filename} due to no/multiple faces detected.")
             continue
 
         # Calculate the face encoding
         face_encoding = face_encodings[0]
 
-        # Convert the face encoding (NumPy array) to a tuple
-        face_encoding_tuple = tuple(face_encoding)
+        # Check if the same face already exists in the face_encodings_list
+        match = face_recognition.compare_faces(face_encodings_list, face_encoding)
 
-        # Check if the same face already exists in the face_dict
-        for existing_encoding, person_name in face_dict.items():
-            match = face_recognition.compare_faces([np.array(existing_encoding)], np.array(face_encoding_tuple))
-            if match[0]:
-                print(f"Found a duplicate of {person_name}: {filename}")
-                break
+        if any(match):
+            # If a matching face is found, skip the image
+            print(f"Found a duplicate face for {filename}")
         else:
-            # If no match is found, add the new face encoding to the dictionary
-            person_name = f"person{counter}"
-            face_dict[face_encoding_tuple] = person_name
+            # If no match is found, add the new face encoding to the list
+            face_encodings_list.append(face_encoding)
 
-            # Copy the image to the output folder with the new name
-            output_filename = f"{person_name}.jpg"
+            # Draw a rectangle around the detected face
+            top, right, bottom, left = face_locations[0]
+            cv2.rectangle(image, (left, top), (right, bottom), (0, 255, 0), 2)
+
+            # Add text indicating the person number
+            person_number_text = f"Person {len(face_encodings_list)}"
+            cv2.putText(image, person_number_text, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+            # Save the modified image with the rectangle and text
+            output_filename = f"person{len(face_encodings_list)}.jpg"
             output_path = os.path.join(output_folder, output_filename)
-            shutil.copy(image_path, output_path)
+            cv2.imwrite(output_path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
             print(f"Copying {filename} to {output_path}")
-
-            # Increment the counter
-            counter += 1
 
 print("Finished processing images.")
